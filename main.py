@@ -1,23 +1,23 @@
+import os
 from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, Request
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from auth import oauth
 from database import SessionLocal, engine
 from email_utils import send_otp_email
-from models import Base, User
+from models import Base, User, VerifyOTPRequest
 from otp import generate_otp
 
 Base.metadata.create_all(bind=engine)
 
+load_dotenv
 
 app = FastAPI()
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="SUPER_SECRET_SESSION_KEY_CHANGE_ME"
-)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY"))
 
 
 # Dependency
@@ -67,14 +67,19 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/verify-otp")
-def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email).first()
-    if not user or user.otp != otp or user.otp_expires < datetime.now():
-        return {"status": "failed", "message": "Invalid OTP"}
+def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.otp != payload.otp or user.otp_expires < datetime.now():
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     return {"status": "success", "message": "Login successful"}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
