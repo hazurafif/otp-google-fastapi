@@ -67,7 +67,9 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/verify-otp")
-def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
+def verify_otp(
+    payload: VerifyOTPRequest, request: Request, db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == payload.email).first()
 
     if not user:
@@ -76,7 +78,15 @@ def verify_otp(payload: VerifyOTPRequest, db: Session = Depends(get_db)):
     if user.otp != payload.otp or user.otp_expires < datetime.now():
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
+    request.session["user"] = {"email": user.email, "user_id": user.id}
+
     return {"status": "success", "message": "Login successful"}
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"status": "success", "message": "Logged out successfully"}
 
 
 if __name__ == "__main__":
